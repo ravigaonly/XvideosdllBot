@@ -3,43 +3,68 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 import yt_dlp
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Enable logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Telegram Bot Token (set as environment variable)
+# Telegram Bot Token (set in .env file)
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# Function to download Twitter video
-def download_twitter_video(url):
+# Function to download media from a tweet
+def download_tweet_media(url):
     ydl_opts = {
         'format': 'best',
-        'outtmpl': 'video.mp4',
+        'outtmpl': 'media.%(ext)s',
+        'quiet': True,
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-    return 'video.mp4'
+        info = ydl.extract_info(url, download=False)
+        if info.get("entries"):
+            # Handle playlists (e.g., tweets with multiple images/videos)
+            media_files = []
+            for entry in info["entries"]:
+                ydl.download([entry["url"]])
+                media_files.extend([f for f in os.listdir() if f.startswith("media.")])
+            return media_files
+        else:
+            # Handle single media (image or video)
+            ydl.download([url])
+            return [f for f in os.listdir() if f.startswith("media.")]
 
 # Start command handler
 async def start(update: Update, context):
-    await update.message.reply_text("Hi! Send me a Twitter video link, and I'll download it for you.")
+    await update.message.reply_text("Hi! Send me a Twitter link, and I'll download the media for you.")
 
 # Message handler for Twitter links
 async def handle_message(update: Update, context):
     url = update.message.text
     if "twitter.com" in url or "x.com" in url:
-        await update.message.reply_text("Downloading video... Please wait.")
+        await update.message.reply_text("Processing... Please wait.")
         try:
-            video_path = download_twitter_video(url)
-            with open(video_path, 'rb') as video_file:
-                await update.message.reply_video(video_file)
-            os.remove(video_path)  # Clean up the downloaded file
+            media_files = download_tweet_media(url)
+            if media_files:
+                for media_file in media_files:
+                    if media_file.endswith((".jpg", ".png", ".jpeg")):
+                        # Send images as photos
+                        with open(media_file, 'rb') as file:
+                            await update.message.reply_photo(file)
+                    elif media_file.endswith((".mp4", ".mkv", ".webm")):
+                        # Send videos as videos
+                        with open(media_file, 'rb') as file:
+                            await update.message.reply_video(file)
+                    os.remove(media_file)  # Clean up the downloaded file
+            else:
+                await update.message.reply_text("No media found in this tweet.")
         except Exception as e:
-            logger.error(f"Error downloading video: {e}")
-            await update.message.reply_text("Sorry, I couldn't download the video. Please check the link and try again.")
+            logger.error(f"Error processing tweet: {e}")
+            await update.message.reply_text("Sorry, I couldn't process the tweet. Please check the link and try again.")
     else:
-        await update.message.reply_text("Please send a valid Twitter video link.")
+        await update.message.reply_text("Please send a valid Twitter link.")
 
 # Main function to run the bot
 def main():
