@@ -32,7 +32,7 @@ def download_tweet_media(url):
                 media_files.extend([f for f in os.listdir() if f.startswith("media.")])
             return media_files
         else:
-            # Handle single media (image or video)
+            # Handle single media (image, GIF, or video)
             ydl.download([url])
             return [f for f in os.listdir() if f.startswith("media.")]
 
@@ -53,8 +53,8 @@ async def handle_message(update: Update, context):
                         # Send images as photos
                         with open(media_file, 'rb') as file:
                             await update.message.reply_photo(file)
-                    elif media_file.endswith((".mp4", ".mkv", ".webm")):
-                        # Send videos as videos
+                    elif media_file.endswith((".mp4", ".mkv", ".webm", ".gif")):
+                        # Send videos and GIFs as videos
                         with open(media_file, 'rb') as file:
                             await update.message.reply_video(file)
                     os.remove(media_file)  # Clean up the downloaded file
