@@ -18,27 +18,25 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # Function to download media from a tweet
 def download_tweet_media(url):
     ydl_opts = {
-        'format': 'best',
+        'format': 'best',  # Prioritize highest quality
         'outtmpl': 'media.%(ext)s',
         'quiet': True,
+        'force_generic_extractor': True,  # Handle Twitter/X media better
+        'extract_flat': False,  # Ensure all media is extracted
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-        if info.get("entries"):
-            # Handle playlists (e.g., tweets with multiple images/videos)
-            media_files = []
-            for entry in info["entries"]:
-                ydl.download([entry["url"]])
-                media_files.extend([f for f in os.listdir() if f.startswith("media.")])
-            return media_files
-        else:
-            # Handle single media (image, GIF, or video)
-            ydl.download([url])
-            return [f for f in os.listdir() if f.startswith("media.")]
-
-# Start command handler
-async def start(update: Update, context):
-    await update.message.reply_text("Hi! Send me a Twitter link, and I'll download the media for you.")
+        
+        # Log extracted info for debugging
+        logger.info(f"Extracted info: {info}")
+        
+        # Download media
+        ydl.download([url])
+        
+        # Collect downloaded files
+        media_files = [f for f in os.listdir() if f.startswith("media.")]
+        logger.info(f"Downloaded files: {media_files}")
+        return media_files
 
 # Message handler for Twitter links
 async def handle_message(update: Update, context):
@@ -49,22 +47,27 @@ async def handle_message(update: Update, context):
             media_files = download_tweet_media(url)
             if media_files:
                 for media_file in media_files:
-                    if media_file.endswith((".jpg", ".png", ".jpeg")):
-                        # Send images as photos
+                    # Check file type and send accordingly
+                    if media_file.endswith((".jpg", ".jpeg", ".png")):
                         with open(media_file, 'rb') as file:
                             await update.message.reply_photo(file)
-                    elif media_file.endswith((".mp4", ".mkv", ".webm", ".gif")):
-                        # Send videos and GIFs as videos
+                    elif media_file.endswith((".mp4", ".gif", ".mkv")):
                         with open(media_file, 'rb') as file:
                             await update.message.reply_video(file)
-                    os.remove(media_file)  # Clean up the downloaded file
+                    else:
+                        logger.warning(f"Unsupported file type: {media_file}")
+                    os.remove(media_file)  # Clean up
             else:
                 await update.message.reply_text("No media found in this tweet.")
         except Exception as e:
-            logger.error(f"Error processing tweet: {e}")
-            await update.message.reply_text("Sorry, I couldn't process the tweet. Please check the link and try again.")
+            logger.error(f"Error: {e}", exc_info=True)
+            await update.message.reply_text("Failed to process the tweet. Please try again.")
     else:
         await update.message.reply_text("Please send a valid Twitter link.")
+
+# Start command handler
+async def start(update: Update, context):
+    await update.message.reply_text("Hi! Send me a Twitter link, and I'll download the media for you.")
 
 # Main function to run the bot
 def main():
